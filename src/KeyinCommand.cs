@@ -44,14 +44,24 @@ namespace PipingDataExporter
             }
         }
 
+        /// <summary>Status line and Message Center only - nothing pops.</summary>
         public static void ReportInfo(string title, string message)
         {
             Show(MessageType.Info, title, message, MessageAlert.None);
         }
 
+        /// <summary>
+        /// Same as <see cref="ReportInfo"/>, but also pops a modal alert the user has to acknowledge.
+        /// For the end of a long-running command, where a status line message is easy to miss.
+        /// </summary>
+        public static void ReportCompletion(string title, string message)
+        {
+            Show(MessageType.Info, title, message, MessageAlert.Dialog);
+        }
+
         public static void ReportError(string title, string message)
         {
-            Show(MessageType.Error, title, message, MessageAlert.Balloon);
+            Show(MessageType.Error, title, message, MessageAlert.Dialog);
         }
 
         private static void Show(MessageType type, string title, string message, MessageAlert alert)

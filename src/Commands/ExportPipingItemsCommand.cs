@@ -28,7 +28,7 @@ namespace PipingDataExporter
                 ModelScanResult scan = ModelItemScanner.Scan(activeModel);
                 ItemWorkbookWriter.Write(scan.Table, outputPath);
 
-                KeyinCommand.ReportInfo("Piping Items Exported!", Summarize(scan, outputPath));
+                KeyinCommand.ReportCompletion("Piping Items Exported!", Summarize(scan, outputPath));
             });
         }
 
@@ -49,24 +49,31 @@ namespace PipingDataExporter
             return Path.Combine(directory, fileName);
         }
 
+        /// <summary>
+        /// Laid out over several lines - this is shown in a modal alert, where a long run-on
+        /// sentence (with a full output path buried in it) is hard to read.
+        /// </summary>
         private static string Summarize(ModelScanResult scan, string outputPath)
         {
+            string newLine = Environment.NewLine;
+
             var summary = new StringBuilder();
-            summary.Append(scan.Table.Records.Count).Append(" piping item(s) exported to ").Append(outputPath);
+            summary.Append(scan.Table.Records.Count).Append(" piping item(s) exported.").Append(newLine);
+            summary.Append(newLine).Append(outputPath).Append(newLine);
 
             if (scan.SkippedElements > 0)
             {
-                summary.Append(" (").Append(scan.SkippedElements).Append(" element(s) skipped due to errors)");
+                summary.Append(newLine).Append(scan.SkippedElements).Append(" element(s) skipped due to errors.");
             }
 
             if (scan.EnumerationAborted)
             {
-                summary.Append(" - WARNING: the scan stopped early, so the export does not cover the whole model.");
+                summary.Append(newLine).Append("WARNING: the scan stopped early, so the export does not cover the whole model.");
             }
 
             if (scan.FirstError != null)
             {
-                summary.Append(" First error: ").Append(scan.FirstError);
+                summary.Append(newLine).Append("First error: ").Append(scan.FirstError);
             }
 
             return summary.ToString();
