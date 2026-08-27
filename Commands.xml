@@ -15,8 +15,8 @@
   </SubKeyinTables>
 
   <KeyinHandlers>
-    <KeyinHandler Keyin="PipingDataExporter DrawLine" Function="PipingDataExporter.OpenPlantTestCommands.DrawLine"/>
-    <KeyinHandler Keyin="PipingDataExporter ExportPipingItems" Function="PipingDataExporter.PipingItemsExporter.ExportPipingItems"/>
+    <KeyinHandler Keyin="PipingDataExporter DrawLine" Function="PipingDataExporter.DrawLineCommand.DrawLine"/>
+    <KeyinHandler Keyin="PipingDataExporter ExportPipingItems" Function="PipingDataExporter.ExportPipingItemsCommand.ExportPipingItems"/>
   </KeyinHandlers>
 
 </KeyinTree>
