@@ -1,0 +1,55 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <OutputType>Library</OutputType>
+    <AssemblyName>PipingDataExporter</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="ustation">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\ustation.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.DgnPlatformNET">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Bentley.DgnPlatformNET.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.GeometryNET">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Bentley.GeometryNET.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.GeometryNET.Common">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Bentley.GeometryNET.Common.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.GeometryNET.Structs">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Bentley.GeometryNET.Structs.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.ECObjects3">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Assemblies\ECFramework\Bentley.ECObjects3.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="Bentley.Platform">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\Assemblies\ECFramework\Bentley.Platform.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <!-- OpenPlant Modeler already loads its own ClosedXML.dll (v0.96.0.0) from its install folder for
+         built-in reporting features. Referencing a different version via NuGet causes a runtime
+         FileLoadException ("manifest definition does not match the assembly reference") because the
+         host's copy wins assembly probing. Reference that exact file instead so identities always match. -->
+    <Reference Include="ClosedXML">
+      <HintPath>C:\Program Files\Bentley\OpenPlant CONNECT Edition\OpenPlantModeler\ClosedXML.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+  </ItemGroup>
+
+  <!-- Embed Key-in Command XML -->
+  <ItemGroup>
+    <EmbeddedResource Include="Commands.xml">
+      <LogicalName>CommandTable.xml</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+</Project>

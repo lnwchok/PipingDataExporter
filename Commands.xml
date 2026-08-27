@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<KeyinTree xmlns="http://www.bentley.com/schemas/1.0/MicroStation/AddIn/KeyinTree.xsd">
+
+  <RootKeyinTable ID="root">
+    <Keyword SubtableRef="Commands" CommandClass="MacroCommand" CommandWord="PipingDataExporter">
+      <Options Required="true"/>
+    </Keyword>
+  </RootKeyinTable>
+
+  <SubKeyinTables>
+    <KeyinTable ID="Commands">
+      <Keyword CommandWord="DrawLine"> </Keyword>
+      <Keyword CommandWord="ExportPipingItems"> </Keyword>
+    </KeyinTable>
+  </SubKeyinTables>
+
+  <KeyinHandlers>
+    <KeyinHandler Keyin="PipingDataExporter DrawLine" Function="PipingDataExporter.OpenPlantTestCommands.DrawLine"/>
+    <KeyinHandler Keyin="PipingDataExporter ExportPipingItems" Function="PipingDataExporter.PipingItemsExporter.ExportPipingItems"/>
+  </KeyinHandlers>
+
+</KeyinTree>

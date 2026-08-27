@@ -1,0 +1,9 @@
+bin/
+obj/
+*.log
+.claude/
+
+# VS/Rider user-specific files
+.vs/
+*.user
+*.suo
