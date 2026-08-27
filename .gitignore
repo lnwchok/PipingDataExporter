@@ -7,3 +7,6 @@ obj/
 .vs/
 *.user
 *.suo
+
+# Exported piping data (plant-specific, not source)
+data/
