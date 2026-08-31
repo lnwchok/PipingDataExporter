@@ -729,12 +729,14 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
   }
 
   function renderRows(items) {
-    if (!items.length) return "<tr><td class=\"empty-row\" colspan=\"7\">No matching items.</td></tr>";
+    if (!items.length) return "<tr><td class=\"empty-row\" colspan=\"9\">No matching items.</td></tr>";
     return items.map(function (it) {
       return "<tr>" +
         "<td class=\"cls\">" + escapeHtml(it.cls) + "</td>" +
         "<td>" + escapeHtml(it.desc) + "</td>" +
-        "<td>" + escapeHtml(it.size) + "</td>" +
+        "<td class=\"mono\">" + (it.pieceMark ? escapeHtml(it.pieceMark) : "—") + "</td>" +
+        "<td>" + escapeHtml(it.size1) + "</td>" +
+        "<td>" + (it.size2 ? escapeHtml(it.size2) : "—") + "</td>" +
         "<td>" + escapeHtml(it.spec) + "</td>" +
         "<td>" + escapeHtml(it.rating) + "</td>" +
         "<td class=\"num\">" + it.qty.toFixed(2) + "</td>" +
@@ -780,8 +782,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
         "<span class=\"line-meta\">" + (active ? filteredItems.length + " of " + line.items.length : line.items.length) + " BOQ lines</span>" +
         "</summary>" +
         "<div class=\"table-scroll\"><table><thead><tr>" +
-        "<th>EC Class Name</th><th>Description</th><th>Size</th><th>Spec</th><th>Rating</th>" +
-        "<th class=\"num\">Qty</th><th>Unit</th></tr></thead><tbody>" +
+        "<th>EC Class Name</th><th>Description</th><th>Material Code</th><th>Size 1</th><th>Size 2</th>" +
+        "<th>Spec</th><th>Rating</th><th class=\"num\">Qty</th><th>Unit</th></tr></thead><tbody>" +
         renderRows(filteredItems) + "</tbody></table></div>" +
         "</details>";
     }).join("");
@@ -947,7 +949,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     return items;
   }
 
-  // By Line Number tab: unchanged single-size aggregate, matching tools/boq_report.html.
+  // By Line Number tab: same columns as the summary, kept in class order rather than by
+  // material code. `size` stays alongside size1/size2 because the size filter matches on it.
   function aggregateLineItems(rows) {
     var map = new Map();
     rows.forEach(function (row) {
@@ -955,11 +958,16 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       var desc = String(row.DESCRIPTION || "").trim();
       var spec = String(row.SPECIFICATION || "").trim();
       var rating = String(row.RATING || "").trim();
+      var pieceMark = String(row.PIECE_MARK || "").trim();
       var si = sizeInfo(row);
       var size = si.size1 + (si.size2 ? " x " + si.size2 : "");
-      var key = [cls, desc, size, spec, rating].join("|");
+      var key = [cls, desc, size, spec, rating, pieceMark].join("|");
       if (!map.has(key)) {
-        map.set(key, { cls: cls, desc: desc, size: size, spec: spec, rating: rating, qty: 0, unit: si.unit });
+        map.set(key, {
+          cls: cls, desc: desc, pieceMark: pieceMark,
+          size1: si.size1, size2: si.size2, size: size,
+          spec: spec, rating: rating, qty: 0, unit: si.unit
+        });
       }
       map.get(key).qty += si.qty;
     });
@@ -967,9 +975,11 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     items.sort(function (a, b) {
       var r = classRank(a.cls) - classRank(b.cls);
       if (r !== 0) return r;
-      var sa = parseFloat(a.size), sb = parseFloat(b.size);
-      var s = (!isNaN(sa) && !isNaN(sb)) ? (sa - sb) : String(a.size).localeCompare(String(b.size));
-      if (s !== 0) return s;
+      var sa = parseFloat(a.size1), sb = parseFloat(b.size1);
+      var s1 = (!isNaN(sa) && !isNaN(sb)) ? (sa - sb) : String(a.size1).localeCompare(String(b.size1));
+      if (s1 !== 0) return s1;
+      var s2 = String(a.size2).localeCompare(String(b.size2));
+      if (s2 !== 0) return s2;
       return a.desc.localeCompare(b.desc) || a.spec.localeCompare(b.spec) || a.rating.localeCompare(b.rating);
     });
     return items;
