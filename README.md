@@ -36,7 +36,16 @@ PipingDataExporter ExportPipingItems
 
 ## BOQ report
 
-`tools/boq_report.html` turns an export into a Bill of Quantities. Open it in any browser and drop the `.xlsx` on it — an overall summary plus a per-line-number breakdown, with pipe totalled in metres, stud bolts in sets, and everything else counted each. It's a single self-contained file with no server and no build step, and nothing leaves your machine.
+`tools/boq_report.html` turns an export into a Bill of Quantities. Open it in any browser and drop the `.xlsx` on **Upload new export** in the sidebar. It's a single self-contained file — no server, no build step, and nothing leaves your machine.
+
+Two views, both quantifying pipe in metres, stud bolts in sets, and everything else each:
+
+- **Overall Summary** — every item in the model, aggregated and sorted by material code.
+- **By Line Number** — the same take-off split per pipe line, so you can price one line at a time.
+
+Search and the size/spec/rating filters apply to both, and there's a light/dark toggle that remembers your choice.
+
+Reducing components show two sizes: a 40 × 30 reducer reads `40` in Size 1 and `30` in Size 2. Material Code comes from the `PIECE_MARK` property — it shows `—` when your catalog doesn't populate one, which is common.
 
 ## Learn more
 
