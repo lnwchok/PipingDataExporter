@@ -3,6 +3,18 @@
 <head>
 <meta charset="UTF-8">
 <title>Piping BOQ Report</title>
+<script>
+  // Apply any saved theme choice before first paint, so the page never flashes the wrong theme.
+  (function () {
+    try {
+      var stored = localStorage.getItem("boq-theme");
+      if (stored === "light" || stored === "dark") {
+        document.documentElement.setAttribute("data-theme", stored);
+        document.documentElement.style.colorScheme = stored;
+      }
+    } catch (e) {}
+  })();
+</script>
 <style>
   :root {
     color-scheme: light dark;
@@ -16,7 +28,7 @@
     --accent-bg: #eaf2fb;
   }
   @media (prefers-color-scheme: dark) {
-    :root {
+    :root:not([data-theme="light"]) {
       --bg: #14171a;
       --fg: #e6e8eb;
       --muted: #9aa4b1;
@@ -26,6 +38,16 @@
       --accent: #6ea8dc;
       --accent-bg: #1b2a38;
     }
+  }
+  :root[data-theme="dark"] {
+    --bg: #14171a;
+    --fg: #e6e8eb;
+    --muted: #9aa4b1;
+    --border: #33383e;
+    --head-bg: #1f2327;
+    --row-alt: #191d21;
+    --accent: #6ea8dc;
+    --accent-bg: #1b2a38;
   }
   * { box-sizing: border-box; }
   body {
@@ -86,12 +108,50 @@
   summary .muted { font-weight: 400; margin-left: 8px; }
   #results { display: none; }
   #tableWrap { overflow-x: auto; }
+  .page-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .theme-toggle {
+    display: inline-flex;
+    flex: none;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 2px;
+    background: var(--head-bg);
+  }
+  .theme-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: none;
+    background: transparent;
+    color: var(--fg);
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .theme-btn.active {
+    background: var(--accent);
+    color: #ffffff;
+  }
 </style>
 </head>
 <body>
 
-<h1>Piping BOQ Report</h1>
-<p class="muted">Upload a PipingItems .xlsx export (from PipingDataExporter) to generate a Bill of Quantities. Re-upload a newer export any time to refresh &mdash; nothing is saved or sent anywhere, all parsing happens in this page.</p>
+<div class="page-header">
+  <div>
+    <h1>Piping BOQ Report</h1>
+    <p class="muted">Upload a PipingItems .xlsx export (from PipingDataExporter) to generate a Bill of Quantities. Re-upload a newer export any time to refresh &mdash; nothing is saved or sent anywhere, all parsing happens in this page.</p>
+  </div>
+  <div class="theme-toggle" role="group" aria-label="Theme">
+    <button type="button" id="themeLight" class="theme-btn"><span aria-hidden="true">&#9728;</span> Light</button>
+    <button type="button" id="themeDark" class="theme-btn"><span aria-hidden="true">&#127769;</span> Dark</button>
+  </div>
+</div>
 
 <div id="dropzone">
   <div>Drop a .xlsx file here, or click to browse</div>
@@ -138,6 +198,33 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
   var results = document.getElementById("results");
   var overallWrap = document.getElementById("overallWrap");
   var byLineWrap = document.getElementById("byLineWrap");
+  var themeLightBtn = document.getElementById("themeLight");
+  var themeDarkBtn = document.getElementById("themeDark");
+
+  function systemPrefersDark() {
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches;
+  }
+  function currentTheme() {
+    var stored = null;
+    try { stored = localStorage.getItem("boq-theme"); } catch (e) {}
+    if (stored === "light" || stored === "dark") return stored;
+    return systemPrefersDark() ? "dark" : "light";
+  }
+  function applyTheme(theme) {
+    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.style.colorScheme = theme;
+    themeLightBtn.classList.toggle("active", theme === "light");
+    themeLightBtn.setAttribute("aria-pressed", theme === "light");
+    themeDarkBtn.classList.toggle("active", theme === "dark");
+    themeDarkBtn.setAttribute("aria-pressed", theme === "dark");
+  }
+  function setTheme(theme) {
+    try { localStorage.setItem("boq-theme", theme); } catch (e) {}
+    applyTheme(theme);
+  }
+  themeLightBtn.addEventListener("click", function () { setTheme("light"); });
+  themeDarkBtn.addEventListener("click", function () { setTheme("dark"); });
+  applyTheme(currentTheme());
 
   dropzone.addEventListener("click", function () { fileInput.click(); });
   fileInput.addEventListener("change", function (e) {
@@ -276,20 +363,29 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     return String(rounded);
   }
 
-  // Returns {size, qty, unit} for one raw row, per the class-dependent BOQ rule.
+  // Second-diameter field per class, for components where one nominal size isn't enough (e.g. reducers).
+  var SIZE2_FIELD_BY_CLASS = {
+    CONCENTRIC_PIPE_REDUCER: "NOMINAL_DIAMETER_REDUCING_END",
+    PIPE_TEE_REDUCING_BRANCH: "NOMINAL_DIAMETER_BRANCH_END",
+    REDUCING_PIPE_COUPLING: "NOMINAL_DIAMETER_RUN_END"
+  };
+
+  // Returns {size1, size2, qty, unit} for one raw row, per the class-dependent BOQ rule.
   function sizeQtyUnit(row) {
     var cls = String(row.ClassName || "").trim();
     if (cls === "PIPE") {
       var lenMm = num(row.LENGTH_EFFECTIVE) || num(row.LENGTH);
-      return { size: String(row.NOMINAL_DIAMETER || "").trim(), qty: lenMm / 1000, unit: "M" };
+      return { size1: String(row.NOMINAL_DIAMETER || "").trim(), size2: "", qty: lenMm / 1000, unit: "M" };
     }
     if (cls === "STUD_BOLT") {
       var dia = mmToNearestEighthInch(num(row.BOLT_DIAMETER));
       var len = formatMm(num(row.BOLT_LENGTH));
       var boltQty = num(row.NUMBER_OF_BOLTS) || 1;
-      return { size: dia + "\" x " + len + "mm", qty: boltQty, unit: "SET" };
+      return { size1: dia + "\" x " + len + "mm", size2: "", qty: boltQty, unit: "SET" };
     }
-    return { size: String(row.NOMINAL_DIAMETER || "").trim(), qty: 1, unit: "EA" };
+    var size2Field = SIZE2_FIELD_BY_CLASS[cls];
+    var size2 = size2Field ? String(row[size2Field] || "").trim() : "";
+    return { size1: String(row.NOMINAL_DIAMETER || "").trim(), size2: size2, qty: 1, unit: "EA" };
   }
 
   function aggregate(rows) {
@@ -299,10 +395,15 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       var desc = String(row.DESCRIPTION || "").trim();
       var spec = String(row.SPECIFICATION || "").trim();
       var rating = String(row.RATING || "").trim();
+      var matCode = String(row.PIECE_MARK || "").trim();
       var sqe = sizeQtyUnit(row);
-      var key = [cls, desc, sqe.size, spec, rating].join("|");
+      var key = [cls, desc, matCode, sqe.size1, sqe.size2, spec, rating].join("|");
       if (!map.has(key)) {
-        map.set(key, { cls: cls, desc: desc, size: sqe.size, spec: spec, rating: rating, qty: 0, unit: sqe.unit });
+        map.set(key, {
+          cls: cls, desc: desc, matCode: matCode,
+          size1: sqe.size1, size2: sqe.size2,
+          spec: spec, rating: rating, qty: 0, unit: sqe.unit
+        });
       }
       map.get(key).qty += sqe.qty;
     });
@@ -310,8 +411,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     items.sort(function (a, b) {
       var r = classRank(a.cls) - classRank(b.cls);
       if (r !== 0) return r;
-      var sa = parseFloat(a.size), sb = parseFloat(b.size);
-      var s = (!isNaN(sa) && !isNaN(sb)) ? (sa - sb) : String(a.size).localeCompare(String(b.size));
+      var sa = parseFloat(a.size1), sb = parseFloat(b.size1);
+      var s = (!isNaN(sa) && !isNaN(sb)) ? (sa - sb) : String(a.size1).localeCompare(String(b.size1));
       if (s !== 0) return s;
       return a.desc.localeCompare(b.desc) || a.spec.localeCompare(b.spec) || a.rating.localeCompare(b.rating);
     });
@@ -329,7 +430,9 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       return "<tr>" +
         "<td>" + escapeHtml(it.cls) + "</td>" +
         "<td>" + escapeHtml(it.desc) + "</td>" +
-        "<td>" + escapeHtml(it.size) + "</td>" +
+        "<td>" + escapeHtml(it.matCode) + "</td>" +
+        "<td>" + escapeHtml(it.size1) + "</td>" +
+        "<td>" + escapeHtml(it.size2) + "</td>" +
         "<td>" + escapeHtml(it.spec) + "</td>" +
         "<td>" + escapeHtml(it.rating) + "</td>" +
         "<td class=\"num\">" + it.qty.toFixed(2) + "</td>" +
@@ -337,7 +440,7 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
         "</tr>";
     }).join("");
     return "<table id=\"" + idPrefix + "\"><thead><tr>" +
-      "<th>EC Class Name</th><th>Description</th><th>Size</th><th>Spec</th><th>Rating</th>" +
+      "<th>EC Class Name</th><th>Description</th><th>Material Code</th><th>Size 1</th><th>Size 2</th><th>Spec</th><th>Rating</th>" +
       "<th class=\"num\">Qty</th><th>Unit</th>" +
       "</tr></thead><tbody>" + rowsHtml + "</tbody></table>";
   }
