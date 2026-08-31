@@ -34,6 +34,10 @@ mdl load PipingDataExporter
 PipingDataExporter ExportPipingItems
 ```
 
+## BOQ report
+
+`tools/boq_report.html` turns an export into a Bill of Quantities. Open it in any browser and drop the `.xlsx` on it — an overall summary plus a per-line-number breakdown, with pipe totalled in metres, stud bolts in sets, and everything else counted each. It's a single self-contained file with no server and no build step, and nothing leaves your machine.
+
 ## Learn more
 
 See [CLAUDE.md](CLAUDE.md) for architecture, troubleshooting, and build/deploy details if you're developing or debugging this AddIn.
