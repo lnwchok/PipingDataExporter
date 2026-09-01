@@ -156,6 +156,13 @@ A single standalone HTML file with SheetJS vendored inline — no build step and
 
 Two tabs share one aggregation pipeline (`sizeInfo` → `aggregateSummary` / `aggregateLineItems` → `renderSummaryRows` / `renderRows`): **Overall Summary** (whole model) and **By Line Number** (grouped by `LINENUMBER`). Both sort by material code first, blanks last.
 
+**Welds are deliberately excluded from the material BOQ.** `WELD` is not in `CLASS_ORDER`, and `handleFile` filters `ClassName === "WELD"` out of the `PipingItems` rows before aggregating. Weld quantity comes from the `WeldJoints` sheet instead — that is the only place the joint *type* exists (`SOCKET_WELD_JOINT` vs `BUTT_WELD_JOINT`, which price differently), and the two sheets are 1:1, so counting both would double them. If you ever put `WELD` back into `CLASS_ORDER`, drop the `WeldJoints` read at the same time.
+
+Weld joints run through their own small pipeline (`aggregateWeldJoints` → `renderWeldRows`), keyed on joint label × `Weld.NOMINAL_DIAMETER`, quantity a plain count, unit `EA`. They surface in two places: a **Weld Joints** panel below the material table in the Summary tab, and a sub-table inside each line group in By Line Number (grouped on `Weld.LINENUMBER`, so a line can be rechecked component by component). Line groups are the *union* of both sheets' line numbers, not just the material sheet's.
+
+- Weld-joint items are shaped with the same `cls`/`desc`/`size`/`spec`/`rating`/`pieceMark` fields as material items purely so `rowMatches` filters them unchanged. `spec` and `rating` stay blank because a JOINT has neither — which means an active spec or rating filter correctly empties the weld tables. Keep the shape if you touch `aggregateWeldJoints`.
+- An export with no `WeldJoints` sheet still loads: `hasWeldSheet` is false, the weld tables show a "re-export" note, and the stat tile reads — rather than 0.
+
 - **Column mapping depends on the exporter's property names, and a wrong one fails silently** — a renamed or unpopulated property renders as an empty cell, never an error. Check a real export before trusting a new mapping.
 - **`NOMINAL_DIAMETER_RUN_END` repeats the *reducing* (small) end on a `CONCENTRIC_PIPE_REDUCER`.** The large end must come from `NOMINAL_DIAMETER`; reading the run end makes both size columns identical (a 40 × 30 reducer renders "30 × 30"). `EQUAL_PIPE_TEE` is deliberately excluded from the branch-end rule for the same reason — its branch always repeats `NOMINAL_DIAMETER`.
 - Items keep fields they no longer display: By Line hides `cls` and `rating` but still sorts on `classRank` and filters on both, and every item keeps the combined `size` string because the size dropdown matches on it. Don't drop these when editing the renderers.

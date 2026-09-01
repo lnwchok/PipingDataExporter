@@ -282,7 +282,7 @@
   /* ---------- Stat tiles ---------- */
   .stats {
     display: grid;
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(5, 1fr);
     gap: 12px;
   }
   .stat-card {
@@ -485,7 +485,30 @@
   details.line-group .table-scroll {
     border: none;
     border-top: 1px solid var(--border-soft);
+    border-radius: 0;
+  }
+  details.line-group > .table-scroll:last-child {
     border-radius: 0 0 var(--radius) var(--radius);
+  }
+  /* Caption over the weld-joint table a line group carries below its material table. */
+  .sub-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 14px 8px;
+    border-top: 1px solid var(--border);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .sub-head .sub-meta {
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+    font-size: 11.5px;
   }
 
   .empty-state {
@@ -585,6 +608,10 @@
           <div class="stat-value" id="stat-specs">–</div>
           <div class="stat-label">Distinct Specs</div>
         </div>
+        <div class="stat-card">
+          <div class="stat-value" id="stat-welds">–</div>
+          <div class="stat-label">Weld Joints</div>
+        </div>
       </section>
 
       <div class="filter-bar">
@@ -614,6 +641,23 @@
                 </tr>
               </thead>
               <tbody id="summary-body"></tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="panel" id="weld-summary">
+          <div class="panel-head">
+            <h2>Weld Joints</h2>
+            <span id="weld-count"></span>
+          </div>
+          <div class="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>Joint Type</th><th>Size</th><th class="num">Qty</th><th>Unit</th>
+                </tr>
+              </thead>
+              <tbody id="weld-body"></tbody>
             </table>
           </div>
         </section>
@@ -655,6 +699,8 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 (function () {
   var overall = [];
   var lines = [];
+  var welds = [];
+  var hasWeldSheet = false;
   var state = { q: "", size: "all", spec: "all", rating: "all" };
 
   function uniq(arr) { return Array.from(new Set(arr.filter(function (v) { return v; }))); }
@@ -668,23 +714,36 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     });
   }
 
+  function totalQty(items) {
+    return items.reduce(function (sum, it) { return sum + it.qty; }, 0);
+  }
+
   function applyData(payload) {
     overall = payload.overallFlat;
     lines = payload.lines;
+    welds = payload.weldTotals;
+    hasWeldSheet = payload.hasWeldSheet;
     state = { q: "", size: "all", spec: "all", rating: "all" };
     document.getElementById("search-input").value = "";
 
+    var weldQty = totalQty(welds);
     document.getElementById("topbar-sub").textContent =
-      overall.length + " aggregated BOQ line items across " + lines.length + " pipe lines.";
+      overall.length + " aggregated BOQ line items" +
+      (hasWeldSheet ? " and " + weldQty + " weld joints" : "") +
+      " across " + lines.length + " pipe lines.";
     document.getElementById("sidebar-filename").textContent = payload.fileName || "PipingItems export";
     document.getElementById("sidebar-filemeta").textContent = payload.fileMeta || "";
 
+    // Sizes span both tables, so the size dropdown has to offer weld sizes too.
+    var allSizes = uniq(overall.map(function (r) { return r.size; }).concat(welds.map(function (r) { return r.size; })));
+
     document.getElementById("stat-items").textContent = overall.length;
     document.getElementById("stat-lines").textContent = lines.length;
-    document.getElementById("stat-sizes").textContent = uniq(overall.map(function (r) { return r.size; })).length;
+    document.getElementById("stat-sizes").textContent = allSizes.length;
     document.getElementById("stat-specs").textContent = uniq(overall.map(function (r) { return r.spec; })).length;
+    document.getElementById("stat-welds").textContent = hasWeldSheet ? weldQty : "—";
 
-    fillSelect(document.getElementById("filter-size"), uniq(overall.map(function (r) { return r.size; })));
+    fillSelect(document.getElementById("filter-size"), allSizes);
     fillSelect(document.getElementById("filter-spec"), uniq(overall.map(function (r) { return r.spec; })));
     fillSelect(document.getElementById("filter-rating"), uniq(overall.map(function (r) { return r.rating; })));
 
@@ -757,6 +816,24 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     }).join("");
   }
 
+  // Weld joints have no material code, spec or rating of their own - only a joint type and the
+  // weld's size - so they get their own four-column table rather than blanks in the material one.
+  function renderWeldRows(items) {
+    if (!hasWeldSheet) {
+      return "<tr><td class=\"empty-row\" colspan=\"4\">This export has no WeldJoints sheet. " +
+        "Re-export with a build that writes it.</td></tr>";
+    }
+    if (!items.length) return "<tr><td class=\"empty-row\" colspan=\"4\">No matching weld joints.</td></tr>";
+    return items.map(function (it) {
+      return "<tr>" +
+        "<td class=\"cls\">" + escapeHtml(it.label) + "</td>" +
+        "<td>" + (it.size1 ? escapeHtml(it.size1) : "—") + "</td>" +
+        "<td class=\"num\">" + it.qty + "</td>" +
+        "<td>" + escapeHtml(it.unit) + "</td>" +
+        "</tr>";
+    }).join("");
+  }
+
   function render() {
     var active = isFilterActive();
 
@@ -766,23 +843,44 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     document.getElementById("summary-count").textContent =
       active ? summaryFiltered.length + " of " + overall.length + " lines" : overall.length + " lines";
 
+    // weld joints, summarised on their own - welds are excluded from the material table above
+    var weldsFiltered = welds.filter(rowMatches);
+    document.getElementById("weld-body").innerHTML = renderWeldRows(weldsFiltered);
+    document.getElementById("weld-count").textContent =
+      hasWeldSheet ? totalQty(weldsFiltered) + " joints" + (active ? " of " + totalQty(welds) : "") : "";
+
     // by-line groups
     var visibleLines = 0;
     var html = lines.map(function (line, i) {
       var filteredItems = active ? line.items.filter(rowMatches) : line.items;
-      if (active && filteredItems.length === 0) return "";
+      var filteredWelds = active ? line.welds.filter(rowMatches) : line.welds;
+      if (active && filteredItems.length === 0 && filteredWelds.length === 0) return "";
       visibleLines++;
       var isOpen = active ? true : i === 0;
+      var lineWeldQty = totalQty(filteredWelds);
+      var meta = (active ? filteredItems.length + " of " + line.items.length : line.items.length) + " BOQ lines";
+      if (line.welds.length) meta += " · " + lineWeldQty + " weld joints";
+
+      // The weld table only appears on lines that actually have welds, so a line group without
+      // any is unchanged from before.
+      var weldBlock = filteredWelds.length
+        ? "<div class=\"sub-head\"><span>Weld Joints</span><span class=\"sub-meta\">" + lineWeldQty + " joints</span></div>" +
+          "<div class=\"table-scroll\"><table><thead><tr>" +
+          "<th>Joint Type</th><th>Size</th><th class=\"num\">Qty</th><th>Unit</th></tr></thead><tbody>" +
+          renderWeldRows(filteredWelds) + "</tbody></table></div>"
+        : "";
+
       return "<details class=\"line-group\"" + (isOpen ? " open" : "") + ">" +
         "<summary>" +
         "<svg class=\"chevron\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M9 6l6 6-6 6\"/></svg>" +
         "<span class=\"line-id\">" + escapeHtml(line.line || "(no line number)") + "</span>" +
-        "<span class=\"line-meta\">" + (active ? filteredItems.length + " of " + line.items.length : line.items.length) + " BOQ lines</span>" +
+        "<span class=\"line-meta\">" + meta + "</span>" +
         "</summary>" +
         "<div class=\"table-scroll\"><table><thead><tr>" +
         "<th>Material Code</th><th>Description</th><th>Size 1</th><th>Size 2</th>" +
         "<th>Spec</th><th class=\"num\">Qty</th><th>Unit</th></tr></thead><tbody>" +
         renderRows(filteredItems) + "</tbody></table></div>" +
+        weldBlock +
         "</details>";
     }).join("");
 
@@ -792,8 +890,10 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
       active ? visibleLines + " of " + lines.length + " lines shown" : lines.length + " lines";
 
     document.getElementById("result-count").innerHTML = active
-      ? "Filtered: <strong>" + summaryFiltered.length + "</strong> of " + overall.length + " BOQ line items, across <strong>" + visibleLines + "</strong> of " + lines.length + " pipe lines."
-      : "Showing all <strong>" + overall.length + "</strong> BOQ line items across <strong>" + lines.length + "</strong> pipe lines.";
+      ? "Filtered: <strong>" + summaryFiltered.length + "</strong> of " + overall.length + " BOQ line items and <strong>" +
+        totalQty(weldsFiltered) + "</strong> of " + totalQty(welds) + " weld joints, across <strong>" + visibleLines + "</strong> of " + lines.length + " pipe lines."
+      : "Showing all <strong>" + overall.length + "</strong> BOQ line items and <strong>" + totalQty(welds) +
+        "</strong> weld joints across <strong>" + lines.length + "</strong> pipe lines.";
 
     document.getElementById("clear-filters").disabled = !active;
   }
@@ -818,16 +918,21 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
   function showEmpty() {
     overall = [];
     lines = [];
+    welds = [];
+    hasWeldSheet = false;
     state = { q: "", size: "all", spec: "all", rating: "all" };
     document.getElementById("topbar-sub").textContent =
       "Upload a PipingItems .xlsx export to generate the Bill of Quantities.";
     document.getElementById("sidebar-filename").textContent = "No export loaded";
     document.getElementById("sidebar-filemeta").textContent = "Nothing is uploaded anywhere — parsing happens in this page.";
-    ["stat-items", "stat-lines", "stat-sizes", "stat-specs"].forEach(function (id) {
+    ["stat-items", "stat-lines", "stat-sizes", "stat-specs", "stat-welds"].forEach(function (id) {
       document.getElementById(id).textContent = "—";
     });
     document.getElementById("summary-body").innerHTML =
       "<tr><td class=\"empty-row\" colspan=\"6\">No export loaded yet.</td></tr>";
+    document.getElementById("weld-body").innerHTML =
+      "<tr><td class=\"empty-row\" colspan=\"4\">No export loaded yet.</td></tr>";
+    document.getElementById("weld-count").textContent = "";
     document.getElementById("line-list").innerHTML =
       "<div class=\"empty-state\">No export loaded yet. Use “Upload new export” in the sidebar, or drop an .xlsx on it.</div>";
     document.getElementById("summary-count").textContent = "";
@@ -860,9 +965,11 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     "SOCKET_WELDED_FLANGE", "SLIP_ON_FLANGE", "THREADED_FLANGE", "BLIND_FLANGE",
     "BALL_VALVE", "CHECK_VALVE", "GLOBE_VALVE", "VALVE_WRENCH", "HAND_WHEEL",
     "GASKET", "STUD_BOLT",
-    "NOZZLE", "PLATFORM_PIPE_GUIDES",
-    "WELD"
+    "NOZZLE", "PLATFORM_PIPE_GUIDES"
   ];
+  // Welds are dropped from the material BOQ entirely and counted from the WeldJoints sheet instead,
+  // which is the only place the joint type (SOCKET_WELD_JOINT vs BUTT_WELD_JOINT) exists.
+  var WELD_CLASS = "WELD";
   function classRank(cls) { var i = CLASS_ORDER.indexOf(cls); return i === -1 ? CLASS_ORDER.length : i; }
   function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
   function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
@@ -989,10 +1096,52 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     return items;
   }
 
+  // Weld joints: one row per joint, so quantity is a count. The joint itself carries no size or
+  // line number - those come from the weld element, exported under the Weld. prefix.
+  function aggregateWeldJoints(rows) {
+    var map = new Map();
+    rows.forEach(function (row) {
+      var label = String(row.Label || row.TYPE || "").trim() || "(unlabelled joint)";
+      var size1 = String(row["Weld.NOMINAL_DIAMETER"] || "").trim();
+      var key = label + "|" + size1;
+      if (!map.has(key)) {
+        map.set(key, {
+          // cls/desc/size/spec/rating/pieceMark are shaped like a material item so that rowMatches
+          // filters weld rows too. A joint has no spec or rating, so those stay blank - which means
+          // a spec or rating filter correctly hides them.
+          cls: WELD_CLASS, desc: label, label: label,
+          size1: size1, size2: "", size: size1,
+          spec: "", rating: "", pieceMark: "",
+          qty: 0, unit: "EA"
+        });
+      }
+      map.get(key).qty += 1;
+    });
+    var items = Array.from(map.values());
+    items.sort(function (a, b) {
+      var l = a.label.localeCompare(b.label);
+      if (l !== 0) return l;
+      var sa = parseFloat(a.size1), sb = parseFloat(b.size1);
+      if (!isNaN(sa) && !isNaN(sb)) return sa - sb;
+      return String(a.size1).localeCompare(String(b.size1));
+    });
+    return items;
+  }
+
   function groupByLineNumber(rows) {
     var map = {};
     rows.forEach(function (r) {
       var ln = String(r.LINENUMBER || "").trim();
+      if (!map[ln]) map[ln] = [];
+      map[ln].push(r);
+    });
+    return map;
+  }
+
+  function groupWeldsByLineNumber(rows) {
+    var map = {};
+    rows.forEach(function (r) {
+      var ln = String(r["Weld.LINENUMBER"] || "").trim();
       if (!map[ln]) map[ln] = [];
       map[ln].push(r);
     });
@@ -1026,18 +1175,44 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
           return;
         }
 
-        var byLine = groupByLineNumber(filtered);
-        var lineNumbers = Object.keys(byLine).sort(function (a, b) { return a.localeCompare(b); });
+        // Welds come out of the material BOQ: they are counted from the WeldJoints sheet instead,
+        // which is the only place the joint type lives. Counting both would double them.
+        var materialRows = filtered.filter(function (r) {
+          return String(r.ClassName || "").trim() !== WELD_CLASS;
+        });
+
+        var hasWelds = workbook.SheetNames.indexOf("WeldJoints") !== -1;
+        var jointRows = hasWelds
+          ? XLSX.utils.sheet_to_json(workbook.Sheets["WeldJoints"], { defval: "" })
+              .filter(function (r) { return String(r.WeldElementId || "").trim() !== ""; })
+          : [];
+
+        var byLine = groupByLineNumber(materialRows);
+        var weldsByLine = groupWeldsByLineNumber(jointRows);
+        // A line can have welds without material rows (or the other way round), so the group list is
+        // the union of both sides rather than whichever sheet was read first.
+        var lineNumbers = Object.keys(byLine)
+          .concat(Object.keys(weldsByLine).filter(function (ln) { return !byLine[ln]; }))
+          .sort(function (a, b) { return a.localeCompare(b); });
         var newLines = lineNumbers.map(function (ln) {
-          var lineRows = byLine[ln];
-          return { line: ln, meta: lineRows.length + " item rows", items: aggregateLineItems(lineRows) };
+          var lineRows = byLine[ln] || [];
+          var lineWelds = weldsByLine[ln] || [];
+          return {
+            line: ln,
+            meta: lineRows.length + " item rows",
+            items: aggregateLineItems(lineRows),
+            welds: aggregateWeldJoints(lineWelds)
+          };
         });
 
         applyData({
-          overallFlat: aggregateSummary(filtered),
+          overallFlat: aggregateSummary(materialRows),
           lines: newLines,
+          weldTotals: aggregateWeldJoints(jointRows),
+          hasWeldSheet: hasWelds,
           fileName: file.name,
-          fileMeta: filtered.length + " piping business-item rows of " + rows.length + " total"
+          fileMeta: materialRows.length + " material rows and " + jointRows.length +
+            " weld joints, of " + rows.length + " rows on \"" + sheetName + "\""
         });
         setUploadStatus("Loaded " + file.name + ".");
       } catch (err) {
