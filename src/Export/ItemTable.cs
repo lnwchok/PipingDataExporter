@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 
 namespace PipingDataExporter.Export
@@ -14,25 +13,17 @@ namespace PipingDataExporter.Export
     internal sealed class ItemTable
     {
         private readonly List<ItemRecord> _records = new List<ItemRecord>();
-        private readonly List<string> _propertyColumns = new List<string>();
-        private readonly HashSet<string> _knownPropertyColumns = new HashSet<string>(StringComparer.Ordinal);
+        private readonly PropertyColumnUnion _propertyColumns = new PropertyColumnUnion();
 
         public IReadOnlyList<ItemRecord> Records => _records;
 
         /// <summary>Property columns in first-seen order.</summary>
-        public IReadOnlyList<string> PropertyColumns => _propertyColumns;
+        public IReadOnlyList<string> PropertyColumns => _propertyColumns.Columns;
 
         public void Add(ItemRecord record)
         {
             _records.Add(record);
-
-            foreach (KeyValuePair<string, string> property in record.Properties)
-            {
-                if (_knownPropertyColumns.Add(property.Key))
-                {
-                    _propertyColumns.Add(property.Key);
-                }
-            }
+            _propertyColumns.AddAll(record.Properties);
         }
     }
 }

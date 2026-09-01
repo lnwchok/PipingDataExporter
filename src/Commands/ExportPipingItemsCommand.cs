@@ -7,8 +7,12 @@ using PipingDataExporter.Export;
 namespace PipingDataExporter
 {
     /// <summary>
-    /// <c>PipingDataExporter ExportPipingItems</c> - scans the active model's business items and
-    /// writes them to an .xlsx next to the active DGN.
+    /// <c>PipingDataExporter ExportPipingItems [weldClass]</c> - scans the active model's business
+    /// items and writes them to an .xlsx next to the active DGN.
+    /// <para>
+    /// The optional argument overrides the EC class the weld pass matches on; it defaults to
+    /// <see cref="WeldJointReader.DefaultWeldClassName"/>, which is what the OpenPlant_3D schema uses.
+    /// </para>
     /// </summary>
     public static class ExportPipingItemsCommand
     {
@@ -25,8 +29,8 @@ namespace PipingDataExporter
                 DgnModel activeModel = ActiveSession.RequireModel();
                 string outputPath = BuildOutputPath(ActiveSession.RequireFile());
 
-                ModelScanResult scan = ModelItemScanner.Scan(activeModel);
-                ItemWorkbookWriter.Write(scan.Table, outputPath);
+                ModelScanResult scan = ModelItemScanner.Scan(activeModel, unparsed);
+                ItemWorkbookWriter.Write(scan, outputPath);
 
                 KeyinCommand.ReportCompletion("Piping Items Exported!", Summarize(scan, outputPath));
             });
@@ -61,9 +65,17 @@ namespace PipingDataExporter
             summary.Append(scan.Table.Records.Count).Append(" piping item(s) exported.").Append(newLine);
             summary.Append(newLine).Append(outputPath).Append(newLine);
 
+            summary.Append(newLine).Append(scan.Welds).Append(" ").Append(scan.WeldClassName)
+                .Append(" item(s), with ").Append(scan.WeldJoints.Joints.Count).Append(" nested item(s).").Append(newLine);
+
+            if (scan.WeldsWithErrors > 0)
+            {
+                summary.Append(newLine).Append(scan.WeldsWithErrors).Append(" weld read(s) failed; those welds may be missing nested items.");
+            }
+
             if (scan.SkippedElements > 0)
             {
-                summary.Append(newLine).Append(scan.SkippedElements).Append(" element(s) skipped due to errors.");
+                summary.Append(newLine).Append(newLine).Append(scan.SkippedElements).Append(" element(s) skipped due to errors.");
             }
 
             if (scan.EnumerationAborted)

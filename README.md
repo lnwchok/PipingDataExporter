@@ -6,6 +6,13 @@ A small AddIn for OpenPlant Modeler (Bentley CONNECT Edition) that exports your 
 
 Scans every element in the active model, reads its business-item data (the same data shown in Explorer > Items), and writes it to an `.xlsx` next to your open DGN. Columns adapt automatically to whatever properties your pipes, valves, and instruments actually have.
 
+The workbook has two sheets:
+
+- **PipingItems** — every business item in the model, one row per item.
+- **WeldJoints** — the level Explorer > Items shows *underneath* a weld (the `SOCKET_WELD_JOINT` node), joined back to the weld's row on `WeldElementId`. Its `Label` column holds the joint name to count a BOQ by.
+
+A joint on its own has no line number, size or spec, so each `WeldJoints` row also carries the weld element's own properties in `Weld.`-prefixed columns — `Weld.LINENUMBER`, `Weld.NOMINAL_DIAMETER` and so on. The sheet is usable for a take-off without joining back to `PipingItems`.
+
 ## Requirements
 
 - OpenPlant CONNECT Edition (OpenPlant Modeler) installed
@@ -33,6 +40,11 @@ Open OpenPlant Modeler and load the AddIn once per session, then run the export 
 mdl load PipingDataExporter
 PipingDataExporter ExportPipingItems
 ```
+
+The export matches welds on the EC class `WELD`. If your dataset names it differently, pass the class
+name as an argument: `PipingDataExporter ExportPipingItems MY_WELD_CLASS`.
+
+The completion dialog reports how many welds were seen and how many nested items came back with them.
 
 ## BOQ report
 

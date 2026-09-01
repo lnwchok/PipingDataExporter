@@ -5,18 +5,22 @@ using ClosedXML.Excel;
 namespace PipingDataExporter.Export
 {
     /// <summary>
-    /// Writes an <see cref="ItemTable"/> to a single-sheet .xlsx workbook: the three identity columns
-    /// every row has, then one column per property found anywhere in the model.
+    /// Writes a scan to a two-sheet .xlsx workbook. Both sheets have the same shape: the identity
+    /// columns each of its rows always has, then one column per property found anywhere in that sheet's
+    /// records.
+    /// <list type="bullet">
+    /// <item><description><c>PipingItems</c> - every business item in the model, one row per EC instance.</description></item>
+    /// <item><description><c>WeldJoints</c> - the item level nested under each weld, joined back on WeldElementId.</description></item>
+    /// </list>
     /// </summary>
     internal static class ItemWorkbookWriter
     {
-        private const string SheetName = "PipingItems";
         private const int HeaderRow = 1;
 
         /// <summary>Name and value kept together so the header and the cells below it can't drift apart.</summary>
-        private sealed class IdentityColumn
+        private sealed class Column<TRecord>
         {
-            public IdentityColumn(string name, Func<ItemRecord, string> valueOf)
+            public Column(string name, Func<TRecord, string> valueOf)
             {
                 Name = name;
                 ValueOf = valueOf;
@@ -24,46 +28,75 @@ namespace PipingDataExporter.Export
 
             public string Name { get; }
 
-            public Func<ItemRecord, string> ValueOf { get; }
+            public Func<TRecord, string> ValueOf { get; }
         }
 
-        private static readonly IdentityColumn[] IdentityColumns =
+        private static readonly Column<ItemRecord>[] ItemColumns =
         {
-            new IdentityColumn("ElementId", record => record.ElementId),
-            new IdentityColumn("SchemaName", record => record.SchemaName),
-            new IdentityColumn("ClassName", record => record.ClassName)
+            new Column<ItemRecord>("ElementId", record => record.ElementId),
+            new Column<ItemRecord>("SchemaName", record => record.SchemaName),
+            new Column<ItemRecord>("ClassName", record => record.ClassName)
         };
 
-        public static void Write(ItemTable table, string outputPath)
+        private static readonly Column<WeldJointRecord>[] WeldJointColumns =
+        {
+            new Column<WeldJointRecord>("WeldElementId", record => record.WeldElementId),
+            new Column<WeldJointRecord>("WeldInstanceId", record => record.WeldInstanceId),
+            new Column<WeldJointRecord>("WeldClassName", record => record.WeldClassName),
+            new Column<WeldJointRecord>("RelationshipClass", record => record.RelationshipClass),
+            new Column<WeldJointRecord>("Direction", record => record.Direction),
+            new Column<WeldJointRecord>("SchemaName", record => record.SchemaName),
+            new Column<WeldJointRecord>("ClassName", record => record.ClassName),
+            new Column<WeldJointRecord>("InstanceId", record => record.InstanceId),
+            new Column<WeldJointRecord>("Label", record => record.Label)
+        };
+
+        public static void Write(ModelScanResult scan, string outputPath)
         {
             using (var workbook = new XLWorkbook())
             {
-                IXLWorksheet sheet = workbook.Worksheets.Add(SheetName);
-
-                Dictionary<string, int> propertyColumnIndex = WriteHeader(sheet, table);
-                WriteRows(sheet, table, propertyColumnIndex);
-
-                sheet.SheetView.FreezeRows(HeaderRow);
-                sheet.Columns().AdjustToContents();
+                WriteSheet(workbook, "PipingItems", ItemColumns, scan.Table.PropertyColumns, scan.Table.Records, record => record.Properties);
+                WriteSheet(workbook, "WeldJoints", WeldJointColumns, scan.WeldJoints.JointPropertyColumns, scan.WeldJoints.Joints, record => record.Properties);
 
                 workbook.SaveAs(outputPath);
             }
         }
 
         /// <summary>
+        /// Added even when it has no records: an empty sheet with its headers says "looked, found
+        /// nothing", which a missing sheet does not.
+        /// </summary>
+        private static void WriteSheet<TRecord>(
+            XLWorkbook workbook,
+            string sheetName,
+            Column<TRecord>[] identityColumns,
+            IReadOnlyList<string> propertyColumns,
+            IReadOnlyList<TRecord> records,
+            Func<TRecord, IReadOnlyList<KeyValuePair<string, string>>> propertiesOf)
+        {
+            IXLWorksheet sheet = workbook.Worksheets.Add(sheetName);
+
+            Dictionary<string, int> propertyColumnIndex = WriteHeader(sheet, identityColumns, propertyColumns);
+            WriteRows(sheet, identityColumns, records, propertiesOf, propertyColumnIndex);
+
+            sheet.SheetView.FreezeRows(HeaderRow);
+            sheet.Columns().AdjustToContents();
+        }
+
+        /// <summary>
         /// Writes the header row and returns the column number each property column landed in.
         /// </summary>
-        private static Dictionary<string, int> WriteHeader(IXLWorksheet sheet, ItemTable table)
+        private static Dictionary<string, int> WriteHeader<TRecord>(IXLWorksheet sheet, Column<TRecord>[] identityColumns, IReadOnlyList<string> propertyColumns)
         {
             int column = 1;
 
-            foreach (IdentityColumn identityColumn in IdentityColumns)
+            foreach (Column<TRecord> identityColumn in identityColumns)
             {
                 sheet.Cell(HeaderRow, column++).Value = identityColumn.Name;
             }
 
-            var propertyColumnIndex = new Dictionary<string, int>(table.PropertyColumns.Count, StringComparer.Ordinal);
-            foreach (string propertyColumn in table.PropertyColumns)
+            var propertyColumnIndex = new Dictionary<string, int>(propertyColumns.Count, StringComparer.Ordinal);
+            foreach (string propertyColumn in propertyColumns)
             {
                 propertyColumnIndex[propertyColumn] = column;
                 sheet.Cell(HeaderRow, column++).Value = propertyColumn;
@@ -72,20 +105,25 @@ namespace PipingDataExporter.Export
             return propertyColumnIndex;
         }
 
-        private static void WriteRows(IXLWorksheet sheet, ItemTable table, Dictionary<string, int> propertyColumnIndex)
+        private static void WriteRows<TRecord>(
+            IXLWorksheet sheet,
+            Column<TRecord>[] identityColumns,
+            IReadOnlyList<TRecord> records,
+            Func<TRecord, IReadOnlyList<KeyValuePair<string, string>>> propertiesOf,
+            Dictionary<string, int> propertyColumnIndex)
         {
             int row = HeaderRow;
 
-            foreach (ItemRecord record in table.Records)
+            foreach (TRecord record in records)
             {
                 row++;
 
-                for (int i = 0; i < IdentityColumns.Length; i++)
+                for (int i = 0; i < identityColumns.Length; i++)
                 {
-                    sheet.Cell(row, i + 1).Value = IdentityColumns[i].ValueOf(record);
+                    sheet.Cell(row, i + 1).Value = identityColumns[i].ValueOf(record);
                 }
 
-                foreach (KeyValuePair<string, string> property in record.Properties)
+                foreach (KeyValuePair<string, string> property in propertiesOf(record))
                 {
                     int column;
                     if (propertyColumnIndex.TryGetValue(property.Key, out column))
