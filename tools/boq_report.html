@@ -648,8 +648,7 @@
             <table>
               <thead>
                 <tr>
-                  <th>Joint Type</th><th>Spec</th><th>Size (mm)</th><th>Size (in)</th>
-                  <th class="num">Joints</th><th class="num">WID</th><th>Unit</th>
+                  <th>Joint Type</th><th>Spec</th><th class="num">WID</th><th>Unit</th>
                 </tr>
               </thead>
               <tbody id="weld-body"></tbody>
@@ -818,29 +817,54 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 
   // Weld joints have no material code, spec or rating of their own - only a joint type and the
   // weld's size - so they get their own four-column table rather than blanks in the material one.
+  // The summary is a welding take-off, so it reports one WID figure per joint type and spec. Size
+  // and joint count are inputs to that figure, not columns - they stay on the per-size items, which
+  // is what the filters and the by-line table still work off.
+  function rollUpWeldJoints(items) {
+    var map = new Map();
+    items.forEach(function (it) {
+      var key = it.label + "|" + it.spec;
+      if (!map.has(key)) {
+        map.set(key, { label: it.label, spec: it.spec, qty: 0, wid: 0, approx: [] });
+      }
+      var g = map.get(key);
+      g.qty += it.qty;
+      g.wid += it.wid;
+      if (!it.exactDn && g.approx.indexOf(it.size1) === -1) g.approx.push(it.size1);
+    });
+    var rows = Array.from(map.values());
+    rows.sort(function (a, b) {
+      return a.label.localeCompare(b.label) || a.spec.localeCompare(b.spec);
+    });
+    return rows;
+  }
+
   function renderWeldRows(items) {
     if (!hasWeldSheet) {
-      return "<tr><td class=\"empty-row\" colspan=\"7\">This export has no WeldJoints sheet. " +
+      return "<tr><td class=\"empty-row\" colspan=\"4\">This export has no WeldJoints sheet. " +
         "Re-export with a build that writes it.</td></tr>";
     }
-    if (!items.length) return "<tr><td class=\"empty-row\" colspan=\"7\">No matching weld joints.</td></tr>";
+    if (!items.length) return "<tr><td class=\"empty-row\" colspan=\"4\">No matching weld joints.</td></tr>";
     return items.map(function (it) {
-      // A size the DN table has no exact entry for is still converted, but says so on hover rather
-      // than quietly presenting the nearest standard size as if it were the modelled one.
-      var inchCell = it.exactDn
-        ? escapeHtml(it.inchLabel)
-        : "<span title=\"" + escapeHtml(it.size1) + " mm is not a standard DN — read as DN" +
-          it.dn + "\">" + escapeHtml(it.inchLabel) + " *</span>";
       return "<tr>" +
         "<td class=\"cls\">" + escapeHtml(it.label) + "</td>" +
         "<td>" + (it.spec ? escapeHtml(it.spec) : "—") + "</td>" +
-        "<td>" + (it.size1 ? escapeHtml(it.size1) : "—") + "</td>" +
-        "<td>" + (it.inchLabel ? inchCell : "—") + "</td>" +
-        "<td class=\"num\">" + it.qty + "</td>" +
         "<td class=\"num\">" + it.wid.toFixed(2) + "</td>" +
-        "<td>" + escapeHtml("DB") + "</td>" +
+        "<td>DB</td>" +
         "</tr>";
     }).join("");
+  }
+
+  // Rolled up, almost every row ends up containing a non-standard size, so marking each one says
+  // nothing. The caveat is stated once for the table instead.
+  function approxNote(rolled) {
+    var sizes = [];
+    rolled.forEach(function (r) {
+      r.approx.forEach(function (mm) { if (sizes.indexOf(mm) === -1) sizes.push(mm); });
+    });
+    if (!sizes.length) return "";
+    sizes.sort(function (a, b) { return parseFloat(a) - parseFloat(b); });
+    return " · includes " + sizes.join(", ") + " mm read as the nearest DN";
   }
 
   function totalWid(items) {
@@ -858,10 +882,11 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
 
     // weld joints, summarised on their own - welds are excluded from the material table above
     var weldsFiltered = welds.filter(rowMatches);
-    document.getElementById("weld-body").innerHTML = renderWeldRows(weldsFiltered);
+    var weldsRolled = rollUpWeldJoints(weldsFiltered);
+    document.getElementById("weld-body").innerHTML = renderWeldRows(weldsRolled);
     document.getElementById("weld-count").textContent = hasWeldSheet
       ? totalQty(weldsFiltered) + " joints" + (active ? " of " + totalQty(welds) : "") +
-        " · " + (Math.round(totalWid(weldsFiltered) * 100) / 100) + " DB"
+        " · " + (Math.round(totalWid(weldsFiltered) * 100) / 100) + " DB" + approxNote(weldsRolled)
       : "";
 
     // by-line groups
@@ -941,7 +966,7 @@ if(xr(e,"index.xml"))throw new Error("Unsupported NUMBERS 09 file");throw new Er
     document.getElementById("summary-body").innerHTML =
       "<tr><td class=\"empty-row\" colspan=\"6\">No export loaded yet.</td></tr>";
     document.getElementById("weld-body").innerHTML =
-      "<tr><td class=\"empty-row\" colspan=\"7\">No export loaded yet.</td></tr>";
+      "<tr><td class=\"empty-row\" colspan=\"4\">No export loaded yet.</td></tr>";
     document.getElementById("weld-count").textContent = "";
     document.getElementById("line-list").innerHTML =
       "<div class=\"empty-state\">No export loaded yet. Use “Upload new export” in the sidebar, or drop an .xlsx on it.</div>";

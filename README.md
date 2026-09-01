@@ -50,7 +50,7 @@ The completion dialog reports how many welds were seen and how many nested items
 
 `tools/boq_report.html` turns an export into a Bill of Quantities. Open it in any browser and drop the `.xlsx` on **Upload new export** in the sidebar. It's a single self-contained file — no server, no build step, and nothing leaves your machine.
 
-Welds are kept out of the material take-off and counted from the `WeldJoints` sheet instead, split by joint type and spec — socket and butt welds are separate lines because they cost differently. The summary reports **WID** (weld inch-diameter, unit `DB`): the joint's nominal size converted to inches, times the number of joints, which is what welding work is priced on. Under By Line Number the joints simply continue each line's material table, so a line can be checked straight down.
+Welds are kept out of the material take-off and counted from the `WeldJoints` sheet instead, split by joint type and spec — socket and butt welds are separate lines because they cost differently. The summary reports **WID** (weld inch-diameter, unit `DB`) per joint type and spec: the joint's nominal size converted to inches, times the number of joints, which is what welding work is priced on. Sizes and joint counts feed that figure but aren't shown — the size filter still narrows it. Under By Line Number the joints simply continue each line's material table, so a line can be checked straight down.
 
 A line with no weld joints usually means exactly that — threaded or flanged piping has none.
 
