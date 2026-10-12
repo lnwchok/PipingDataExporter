@@ -555,6 +555,47 @@
       gap: 10px;
     }
 
+    /* The By Line head carries a filter box and the selection controls, not just a count and a
+       button, so it centres and wraps where the Summary head can stay on one baseline. */
+    .panel-head.by-line-head {
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 14px;
+    }
+
+    .panel-head.by-line-head .panel-head-actions {
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    .panel-head-actions .search-field {
+      flex: 0 1 220px;
+    }
+
+    input[type="checkbox"] {
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+      margin: 0;
+      flex: 0 0 auto;
+      cursor: pointer;
+    }
+
+    input[type="checkbox"]:disabled {
+      cursor: default;
+      opacity: 0.4;
+    }
+
+    .select-all-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--muted);
+      white-space: nowrap;
+      cursor: pointer;
+    }
+
     table {
       width: 100%;
       border-collapse: collapse;
@@ -917,9 +958,30 @@
 
         <div class="tab-panel" id="tab-by-line" data-tab-panel="by-line">
           <section class="panel" id="by-line">
-            <div class="panel-head">
+            <div class="panel-head by-line-head">
               <h2>By Line Number</h2>
-              <span id="by-line-count"></span>
+              <div class="panel-head-actions">
+                <div class="search-field">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="7" />
+                    <path d="M21 21l-4.3-4.3" />
+                  </svg>
+                  <input type="text" id="line-filter-input" placeholder="Filter line number…" autocomplete="off">
+                </div>
+                <span id="by-line-count"></span>
+                <label class="select-all-label" for="select-all-lines">
+                  <input type="checkbox" id="select-all-lines">
+                  Select all
+                </label>
+                <span id="line-select-count"></span>
+                <button type="button" class="export-btn" id="export-lines" disabled>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 4v12M12 16l-4-4M12 16l4-4" />
+                    <path d="M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3" />
+                  </svg>
+                  Export selected
+                </button>
+              </div>
             </div>
             <div class="line-list" id="line-list"></div>
           </section>
@@ -990,7 +1052,16 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
       var welds = [];
       var hasWeldSheet = false;
       var sourceFileName = "";
-      var state = { q: "", size: "all", spec: "all", rating: "all" };
+      function initialState() { return { q: "", size: "all", spec: "all", rating: "all", lineQ: "" }; }
+      var state = initialState();
+
+      // Which line groups are ticked, keyed on the group's line number (the no-line group's key is
+      // the empty string). It lives out here because render() rebuilds #line-list wholesale, so the
+      // ticks have to be re-applied from this on every pass or a keystroke in the search box wipes
+      // them. visibleLineKeys is what the last render actually drew, which is what "select all" and
+      // the selection counter work against.
+      var selectedLines = Object.create(null);
+      var visibleLineKeys = [];
 
       function uniq(arr) { return Array.from(new Set(arr.filter(function (v) { return v; }))); }
       function fillSelect(sel, values) {
@@ -1021,8 +1092,10 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         welds = payload.weldTotals;
         hasWeldSheet = payload.hasWeldSheet;
         sourceFileName = payload.fileName || "";
-        state = { q: "", size: "all", spec: "all", rating: "all" };
+        state = initialState();
+        selectedLines = Object.create(null);
         document.getElementById("search-input").value = "";
+        document.getElementById("line-filter-input").value = "";
 
         var weldQty = totalQty(welds);
         document.getElementById("topbar-sub").textContent =
@@ -1087,6 +1160,44 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
 
       function isFilterActive() {
         return !!state.q || state.size !== "all" || state.spec !== "all" || state.rating !== "all";
+      }
+
+      // Kept separate from isFilterActive on purpose. The line filter only exists on the By Line
+      // tab - items carry no line number, only the group around them does - so folding it in would
+      // make the summary table and #result-count report themselves as filtered when nothing on that
+      // tab changed.
+      function lineFilterActive() { return !!state.lineQ; }
+
+      // Substring, not equality: line numbers spell out size, service and spec (25-FW5020-S6TE), so
+      // a partial match is what makes "every FW line" or "everything in S6TE" reachable.
+      function lineMatches(line) {
+        return !state.lineQ || String(line.line).toLowerCase().indexOf(state.lineQ) !== -1;
+      }
+
+      function selectedLineCount() {
+        return Object.keys(selectedLines).filter(function (k) { return selectedLines[k]; }).length;
+      }
+
+      // Drives the head controls off the last render's visible set: "select all" with a line filter
+      // on means the lines that filter shows, not all of them. A line that is ticked and then
+      // filtered out of view still counts for the export - a tick is an explicit choice, not a view
+      // setting - so the counter calls those out rather than letting them vanish silently.
+      function updateLineSelectionUi() {
+        var visibleSelected = visibleLineKeys.filter(function (k) { return selectedLines[k]; }).length;
+        var total = selectedLineCount();
+        var box = document.getElementById("select-all-lines");
+        box.checked = visibleLineKeys.length > 0 && visibleSelected === visibleLineKeys.length;
+        box.indeterminate = visibleSelected > 0 && visibleSelected < visibleLineKeys.length;
+        box.disabled = visibleLineKeys.length === 0;
+
+        var label = "";
+        if (total) {
+          label = total + (total === 1 ? " line selected" : " lines selected");
+          var hidden = total - visibleSelected;
+          if (hidden > 0) label += " (" + hidden + " hidden by filter)";
+        }
+        document.getElementById("line-select-count").textContent = label;
+        document.getElementById("export-lines").disabled = total === 0;
       }
 
       function renderRows(items, weldFromIndex) {
@@ -1195,13 +1306,19 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
           : "";
 
         // by-line groups
+        var lineActive = lineFilterActive();
+        var lineMatchCount = 0;
         var visibleLines = 0;
+        visibleLineKeys = [];
         var html = lines.map(function (line, i) {
+          if (!lineMatches(line)) return "";
+          lineMatchCount++;
           var filteredItems = active ? line.items.filter(rowMatches) : line.items;
           var filteredWelds = active ? line.welds.filter(rowMatches) : line.welds;
           if (active && filteredItems.length === 0 && filteredWelds.length === 0) return "";
           visibleLines++;
-          var isOpen = active ? true : i === 0;
+          visibleLineKeys.push(line.line);
+          var isOpen = (active || lineActive) ? true : i === 0;
           var lineWeldQty = totalQty(filteredWelds);
           var meta = (active ? filteredItems.length + " of " + line.items.length : line.items.length) + " BOQ lines";
           if (line.welds.length) meta += " · " + lineWeldQty + " weld joints";
@@ -1212,6 +1329,9 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
 
           return "<details class=\"line-group\"" + (isOpen ? " open" : "") + ">" +
             "<summary>" +
+            "<input type=\"checkbox\" class=\"line-select\" data-line=\"" + escapeHtml(line.line) + "\"" +
+            (selectedLines[line.line] ? " checked" : "") +
+            " aria-label=\"Select " + escapeHtml(line.line || "(no line number)") + " for export\">" +
             "<svg class=\"chevron\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M9 6l6 6-6 6\"/></svg>" +
             "<span class=\"line-id\">" + escapeHtml(line.line || "(no line number)") + "</span>" +
             "<span class=\"line-meta\">" + meta + "</span>" +
@@ -1224,10 +1344,13 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
             "</details>";
         }).join("");
 
-        document.getElementById("line-list").innerHTML = html ||
-          "<div class=\"empty-state\">No pipe lines match the current filters.</div>";
-        document.getElementById("by-line-count").textContent =
-          active ? visibleLines + " of " + lines.length + " lines shown" : lines.length + " lines";
+        document.getElementById("line-list").innerHTML = html || (lineActive && lineMatchCount === 0
+          ? "<div class=\"empty-state\">No line number contains “" + escapeHtml(state.lineQ) + "”.</div>"
+          : "<div class=\"empty-state\">No pipe lines match the current filters.</div>");
+        document.getElementById("by-line-count").textContent = (active || lineActive)
+          ? visibleLines + " of " + lines.length + " lines shown"
+          : lines.length + " lines";
+        updateLineSelectionUi();
 
         document.getElementById("result-count").innerHTML = active
           ? "Filtered: <strong>" + summaryFiltered.length + "</strong> of " + overall.length + " BOQ line items and <strong>" +
@@ -1235,7 +1358,7 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
           : "Showing all <strong>" + overall.length + "</strong> BOQ line items and <strong>" + totalQty(welds) +
           "</strong> weld joints across <strong>" + lines.length + "</strong> pipe lines.";
 
-        document.getElementById("clear-filters").disabled = !active;
+        document.getElementById("clear-filters").disabled = !active && !lineActive;
       }
 
       document.getElementById("search-input").addEventListener("input", function (e) {
@@ -1245,12 +1368,46 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
       document.getElementById("filter-size").addEventListener("change", function (e) { state.size = e.target.value; render(); });
       document.getElementById("filter-spec").addEventListener("change", function (e) { state.spec = e.target.value; render(); });
       document.getElementById("filter-rating").addEventListener("change", function (e) { state.rating = e.target.value; render(); });
+      document.getElementById("line-filter-input").addEventListener("input", function (e) {
+        state.lineQ = e.target.value.trim().toLowerCase();
+        render();
+      });
+      // Clears every filter including the line box - but deliberately not the ticks. A selection is
+      // something the user made; the filters are a reading aid.
       document.getElementById("clear-filters").addEventListener("click", function () {
-        state = { q: "", size: "all", spec: "all", rating: "all" };
+        state = initialState();
         document.getElementById("search-input").value = "";
+        document.getElementById("line-filter-input").value = "";
         document.getElementById("filter-size").value = "all";
         document.getElementById("filter-spec").value = "all";
         document.getElementById("filter-rating").value = "all";
+        render();
+      });
+
+      // ---- line selection ----
+      var lineList = document.getElementById("line-list");
+
+      // A checkbox inside <summary> toggles the <details> as well as itself, so this click has to
+      // stop here or every tick also opens or closes the group it is in.
+      lineList.addEventListener("click", function (e) {
+        if (e.target && e.target.classList && e.target.classList.contains("line-select")) e.stopPropagation();
+      });
+      // Delegated, because render() replaces every one of these elements on each pass.
+      lineList.addEventListener("change", function (e) {
+        var box = e.target;
+        if (!box || !box.classList || !box.classList.contains("line-select")) return;
+        var key = box.getAttribute("data-line");
+        if (box.checked) selectedLines[key] = true;
+        else delete selectedLines[key];
+        // Not render(): rebuilding #line-list would collapse every open group mid-interaction.
+        updateLineSelectionUi();
+      });
+      document.getElementById("select-all-lines").addEventListener("change", function (e) {
+        var on = e.target.checked;
+        visibleLineKeys.forEach(function (k) {
+          if (on) selectedLines[k] = true;
+          else delete selectedLines[k];
+        });
         render();
       });
 
@@ -1261,7 +1418,10 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         welds = [];
         hasWeldSheet = false;
         sourceFileName = "";
-        state = { q: "", size: "all", spec: "all", rating: "all" };
+        state = initialState();
+        selectedLines = Object.create(null);
+        visibleLineKeys = [];
+        document.getElementById("line-filter-input").value = "";
         document.getElementById("topbar-sub").textContent =
           "Upload a PipingItems .xlsx export to generate the Bill of Quantities.";
         document.getElementById("sidebar-filename").textContent = "No export loaded";
@@ -1281,6 +1441,12 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         document.getElementById("result-count").textContent = "";
         document.getElementById("clear-filters").disabled = true;
         document.getElementById("export-summary").disabled = true;
+        document.getElementById("export-lines").disabled = true;
+        document.getElementById("line-select-count").textContent = "";
+        var selectAllBox = document.getElementById("select-all-lines");
+        selectAllBox.checked = false;
+        selectAllBox.indeterminate = false;
+        selectAllBox.disabled = true;
       }
 
       showEmpty();
@@ -1667,6 +1833,64 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
       }
 
       document.getElementById("export-summary").addEventListener("click", exportSummaryXlsx);
+
+      // ---- export the ticked line groups ----
+      function exportLinesFileName() {
+        var base = String(sourceFileName || "").replace(/\.[^.]+$/, "").trim();
+        return (base ? base + "-" : "") + "BOQ-Lines" + (isFilterActive() ? "-filtered" : "") + ".xlsx";
+      }
+
+      // Qty stays a number for the same reason as the summary export, and a blank material code
+      // exports blank rather than the table's dash. A weld joint has no material code of its own, so
+      // the Type column is what tells the two kinds of row apart once they share one sheet.
+      function lineExportRow(lineNumber, type, it) {
+        return [lineNumber, type, it.pieceMark, it.desc, it.size1, it.size2,
+          it.spec, Math.round(it.qty * 100) / 100, it.unit];
+      }
+
+      // The counterpart to exportSummaryXlsx, and deliberately the opposite call on filters: this
+      // sheet is "the lines I ticked, as I am looking at them", so the filter bar carries into it.
+      // That makes a partial take-off possible - the thing the summary export refuses to risk - so
+      // the filename says -filtered and so does the status line, and the file identifies itself once
+      // it has left the page. The ticks are the selection, not the line filter: a ticked line the
+      // filter currently hides still exports, and the header counter says how many those are.
+      function exportSelectedLinesXlsx() {
+        try {
+          var active = isFilterActive();
+          var aoa = [["Line Number", "Type", "Material Code", "Description",
+            "Size 1", "Size 2", "Spec", "Qty", "Unit"]];
+          var lineCount = 0;
+          lines.forEach(function (line) {
+            if (!selectedLines[line.line]) return;
+            var items = active ? line.items.filter(rowMatches) : line.items;
+            var joints = active ? line.welds.filter(rowMatches) : line.welds;
+            if (!items.length && !joints.length) return;
+            lineCount++;
+            items.forEach(function (it) { aoa.push(lineExportRow(line.line, "Material", it)); });
+            joints.forEach(function (it) { aoa.push(lineExportRow(line.line, "Weld Joint", it)); });
+          });
+
+          // A header-only workbook would read as a complete export of nothing. Say it instead.
+          if (lineCount === 0) {
+            setUploadStatus("Nothing to export: the selected lines have no rows under the current filters.", true);
+            return;
+          }
+
+          var ws = XLSX.utils.aoa_to_sheet(aoa);
+          ws["!cols"] = [{ wch: 20 }, { wch: 11 }, { wch: 18 }, { wch: 46 },
+            { wch: 10 }, { wch: 10 }, { wch: 8 }, { wch: 10 }, { wch: 8 }];
+          var wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "By Line BOQ");
+          XLSX.writeFile(wb, exportLinesFileName());
+          setUploadStatus("Exported " + (aoa.length - 1) + " rows across " + lineCount +
+            (lineCount === 1 ? " line" : " lines") +
+            (active ? ", with the current filters applied." : "."));
+        } catch (err) {
+          setUploadStatus("Failed to write xlsx: " + err.message, true);
+        }
+      }
+
+      document.getElementById("export-lines").addEventListener("click", exportSelectedLinesXlsx);
     })();
   </script>
 

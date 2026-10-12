@@ -59,7 +59,12 @@ Two views, both quantifying pipe in metres, stud bolts in sets, and everything e
 - **Overall Summary** — every item in the model, aggregated and sorted by material code.
 - **By Line Number** — the same take-off split per pipe line, so you can price one line at a time.
 
-Search and the size/spec/rating filters apply to both, and there's a light/dark toggle that remembers your choice.
+Search and the size/spec/rating filters apply to both, and there's a light/dark toggle that remembers your choice. **By Line Number** has its own filter box for the line number itself — it matches any part of it, so `FW` finds every fluid-water line and `S6TE` every line in that spec.
+
+Either view can be sent to Excel:
+
+- **Export XLSX**, on Overall Summary, writes the whole-model material take-off. It ignores the filters on purpose, so what you get is always the complete list.
+- **Export selected**, on By Line Number, writes just the lines you tick. One sheet, a Line Number column on every row, materials then weld joints per line. This one *does* follow the filters — it's meant to be what you're looking at — so when any filter is set the filename ends `-filtered` to say so. Ticks survive filtering and searching, and **Select all** takes the lines currently shown.
 
 Reducing components show two sizes: a 40 × 30 reducer reads `40` in Size 1 and `30` in Size 2. Material Code comes from the `PIECE_MARK` property — it shows `—` when your catalog doesn't populate one, which is common.
 

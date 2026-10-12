@@ -8,6 +8,8 @@ A single standalone HTML file with SheetJS vendored inline — no build step and
 
 Two tabs share one aggregation pipeline (`sizeInfo` → `aggregateSummary` / `aggregateLineItems` → `renderSummaryRows` / `renderRows`): **Overall Summary** (whole model) and **By Line Number** (grouped by `LINENUMBER`). Both sort by material code first, blanks last.
 
+**There are two exports, and they answer to filters differently on purpose.**
+
 **Export XLSX** sits in the Overall Summary panel head and writes that material table — and only it —
 to a one-sheet workbook (`Overall Summary`) through the same vendored SheetJS, which is the full build,
 so `aoa_to_sheet` / `book_new` / `writeFile` are all there. It exports the **unfiltered** `overall`
@@ -18,6 +20,39 @@ rather than the table's placeholder dash. Weld joints are not in the file. Note 
 has the browser download path in this bundle (no Node `fs`), and that a *published artifact* copy of
 this page cannot download at all — the viewer sandbox blocks page-initiated downloads, so the button
 works from the local file, not from the artifact.
+
+**Export selected** sits in the By Line Number panel head and writes the *ticked* line groups to one
+`By Line BOQ` sheet: `Line Number | Type | Material Code | Description | Size 1 | Size 2 | Spec | Qty |
+Unit`, one row block per line in page order, materials then weld joints. Weld joints **are** in this
+one — unlike the summary export — because the By Line tab is the checking view, where joints already
+continue the material table; `Type` (`Material` / `Weld Joint`) is what tells the two kinds of row
+apart once they share a sheet, and a joint's Material Code is blank because it has none. Qty is a
+number and blank codes export blank, same as the summary export.
+
+Unlike the summary export it **does** carry the filter bar — this sheet is "the lines I ticked, as I
+am looking at them". That makes a partial take-off possible, which is exactly what the summary export
+refuses to risk, so the file is made to identify itself instead: the name becomes
+`<base>-BOQ-Lines-filtered.xlsx` and the status line says the filters were applied. Don't quietly drop
+either signal. If every selected line filters down to nothing it reports that and writes no file —
+a header-only workbook would read as a complete export of nothing.
+
+The **line-number filter** next to it is a substring match (`lineMatches`), not a dropdown: line
+numbers spell out size, service and spec (`25-FW5020-S6TE`), so typing `FW` or `S6TE` sweeps a whole
+family. It has to live in that panel head rather than the shared `.filter-bar` because *items carry
+no line number* — only the enclosing `lines[]` group does — so the filter is meaningless on the
+Summary tab. For the same reason `lineFilterActive()` is kept out of `isFilterActive()`: folding it in
+would make the summary table and `#result-count` report themselves as filtered when nothing on that
+tab had changed.
+
+Two things about the selection are load-bearing. `render()` rebuilds `#line-list` wholesale, so the
+ticks live in the module-level `selectedLines` and are re-applied from it on every pass — otherwise a
+keystroke in the search box wipes them; and the per-line `change`/`click` handlers are **delegated on
+`#line-list`**, with `stopPropagation()` on the click, because a checkbox inside `<summary>` toggles
+its `<details>` as well as itself. The tick handler deliberately does *not* call `render()` (that
+would collapse every open group mid-interaction) and "Clear filters" deliberately does not clear the
+ticks — a selection is a choice the user made, not a view setting. "Select all" is scoped to the
+visible lines; a ticked line the filter has since hidden still exports, and the counter says how many
+those are rather than letting them vanish.
 
 **Welds are deliberately excluded from the material BOQ.** `WELD` is not in `CLASS_ORDER`, and `handleFile` filters `ClassName === "WELD"` out of the `PipingItems` rows before aggregating. Weld quantity comes from the `WeldJoints` sheet instead — that is the only place the joint *type* exists (`SOCKET_WELD_JOINT` vs `BUTT_WELD_JOINT`, which price differently), and the two sheets are 1:1, so counting both would double them. If you ever put `WELD` back into `CLASS_ORDER`, drop the `WeldJoints` read at the same time.
 
