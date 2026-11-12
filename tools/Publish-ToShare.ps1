@@ -1,4 +1,4 @@
-# Copies the team package (Release x64 DLL + BOQ report page) to the shared folder.
+# Copies the team package (Release x64 DLL + BOQ report page + README) to the shared folder.
 # Usage: pwsh -File tools/Publish-ToShare.ps1 [-Build]
 param(
     [string]$Destination = '\\192.165.0.5\Piping_Group\XX_Backup\Sitthichok\Devs\OpenPlant_BQ_Extractor',
@@ -14,7 +14,8 @@ if ($Build) {
 
 $files = @(
     (Join-Path $root 'bin\x64\Release\net48\PipingDataExporter.dll'),
-    (Join-Path $root 'tools\boq_report.html')
+    (Join-Path $root 'tools\boq_report.html'),
+    (Join-Path $root 'README.md')
 )
 foreach ($f in $files) { if (-not (Test-Path $f)) { throw "Missing: $f" } }
 

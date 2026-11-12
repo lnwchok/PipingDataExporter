@@ -4,7 +4,8 @@ Loaded when working under `tools/`. Project constraints live in the root [CLAUDE
 
 ## Team share (`tools/Publish-ToShare.ps1`)
 
-Copies exactly two files — `bin\x64\Release\net48\PipingDataExporter.dll` and `boq_report.html` — to
+Copies exactly three files — `bin\x64\Release\net48\PipingDataExporter.dll`, `boq_report.html` and
+the root `README.md` (the how-to-use guide for whoever picks it up from the share) — to
 `\\192.165.0.5\Piping_Group\XX_Backup\Sitthichok\Devs\OpenPlant_BQ_Extractor` (override with
 `-Destination`), overwriting what is there. It copies whatever DLL is on disk; pass `-Build` after any
 C# change, or the share gets a stale binary. Don't add `ClosedXML`/OpenXml DLLs or the `.pdb` — the
