@@ -1464,20 +1464,22 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         });
       });
 
-      // ---- upload a new export (re-parses client-side with the SheetJS library below, same rules as tools/boq_report.html) ----
+      // ---- upload a new export (re-parses client-side with the SheetJS library vendored above) ----
       var CLASS_ORDER = [
         "PIPE",
         "LONG_RADIUS_90_DEGREE_PIPE_ELBOW", "LONG_RADIUS_45_DEGREE_PIPE_ELBOW",
         "EQUAL_PIPE_TEE", "PIPE_TEE_REDUCING_BRANCH", "CONCENTRIC_PIPE_REDUCER",
         "REDUCING_PIPE_COUPLING", "PIPE_COUPLING", "PIPE_UNION",
         "SOCKET_WELDED_FLANGE", "SLIP_ON_FLANGE", "THREADED_FLANGE", "BLIND_FLANGE",
-        "BALL_VALVE", "CHECK_VALVE", "GLOBE_VALVE", "VALVE_WRENCH", "HAND_WHEEL",
+        "BALL_VALVE", "CHECK_VALVE", "GLOBE_VALVE",
         "GASKET", "STUD_BOLT",
         "NOZZLE", "PLATFORM_PIPE_GUIDES"
       ];
       // Welds are dropped from the material BOQ entirely and counted from the WeldJoints sheet instead,
       // which is the only place the joint type (SOCKET_WELD_JOINT vs BUTT_WELD_JOINT) exists.
       var WELD_CLASS = "WELD";
+      // A valve's wrench/hand wheel is modelled as its own element; it is not a valve, so it is excluded.
+      var VALVE_OPERATOR_CLASSES = ["VALVE_WRENCH", "HAND_WHEEL"];
       function classRank(cls) { var i = CLASS_ORDER.indexOf(cls); return i === -1 ? CLASS_ORDER.length : i; }
       function num(v) { var n = parseFloat(v); return isNaN(n) ? 0 : n; }
       function gcd(a, b) { return b === 0 ? a : gcd(b, a % b); }
@@ -1523,7 +1525,9 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         return { size1: nd, size2: "", qty: 1, unit: "EA" };
       }
 
-      // Summary tab: Material Code first, split Size 1 / Size 2.
+      // Both tabs: the whole model for the Summary, one line's rows for each By Line group. Material Code
+      // first, split Size 1 / Size 2. Items keep `cls`, `rating` and the combined `size` even where they
+      // are not shown, because classRank and the search/rating/size filters read them.
       function aggregateSummary(rows) {
         var map = new Map();
         rows.forEach(function (row) {
@@ -1539,48 +1543,6 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
               cls: cls, desc: desc, size1: si.size1, size2: si.size2,
               size: si.size1 + (si.size2 ? " x " + si.size2 : ""),
               spec: spec, rating: rating, pieceMark: pieceMark, qty: 0, unit: si.unit
-            });
-          }
-          map.get(key).qty += si.qty;
-        });
-        var items = Array.from(map.values());
-        items.sort(function (a, b) {
-          var aBlank = a.pieceMark === "" ? 1 : 0;
-          var bBlank = b.pieceMark === "" ? 1 : 0;
-          if (aBlank !== bBlank) return aBlank - bBlank;
-          var pm = a.pieceMark.localeCompare(b.pieceMark);
-          if (pm !== 0) return pm;
-          var r = classRank(a.cls) - classRank(b.cls);
-          if (r !== 0) return r;
-          var sa = parseFloat(a.size1), sb = parseFloat(b.size1);
-          var s1 = (!isNaN(sa) && !isNaN(sb)) ? (sa - sb) : String(a.size1).localeCompare(String(b.size1));
-          if (s1 !== 0) return s1;
-          var s2 = String(a.size2).localeCompare(String(b.size2));
-          if (s2 !== 0) return s2;
-          return a.desc.localeCompare(b.desc) || a.spec.localeCompare(b.spec) || a.rating.localeCompare(b.rating);
-        });
-        return items;
-      }
-
-      // By Line Number tab: sorted by material code first, like the summary. `cls` and `rating` are
-      // no longer shown but stay on each item — classRank still orders within a material code, and
-      // the search and rating filters read them. `size` stays too, because the size filter matches it.
-      function aggregateLineItems(rows) {
-        var map = new Map();
-        rows.forEach(function (row) {
-          var cls = String(row.ClassName || "").trim();
-          var desc = String(row.DESCRIPTION || "").trim();
-          var spec = String(row.SPECIFICATION || "").trim();
-          var rating = String(row.RATING || "").trim();
-          var pieceMark = String(row.PIECE_MARK || "").trim();
-          var si = sizeInfo(row);
-          var size = si.size1 + (si.size2 ? " x " + si.size2 : "");
-          var key = [cls, desc, size, spec, rating, pieceMark].join("|");
-          if (!map.has(key)) {
-            map.set(key, {
-              cls: cls, desc: desc, pieceMark: pieceMark,
-              size1: si.size1, size2: si.size2, size: size,
-              spec: spec, rating: rating, qty: 0, unit: si.unit
             });
           }
           map.get(key).qty += si.qty;
@@ -1677,20 +1639,10 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
         return items;
       }
 
-      function groupByLineNumber(rows) {
+      function groupByLineNumber(rows, lineColumn) {
         var map = {};
         rows.forEach(function (r) {
-          var ln = String(r.LINENUMBER || "").trim();
-          if (!map[ln]) map[ln] = [];
-          map[ln].push(r);
-        });
-        return map;
-      }
-
-      function groupWeldsByLineNumber(rows) {
-        var map = {};
-        rows.forEach(function (r) {
-          var ln = String(r["Weld.LINENUMBER"] || "").trim();
+          var ln = String(r[lineColumn] || "").trim();
           if (!map[ln]) map[ln] = [];
           map[ln].push(r);
         });
@@ -1726,8 +1678,11 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
 
             // Welds come out of the material BOQ: they are counted from the WeldJoints sheet instead,
             // which is the only place the joint type lives. Counting both would double them.
+            // Valve operators (VALVE_WRENCH, HAND_WHEEL) are dropped too: each one sits on a valve that is already
+            // counted, so keeping them inflates the valve quantity.
             var materialRows = filtered.filter(function (r) {
-              return String(r.ClassName || "").trim() !== WELD_CLASS;
+              var cls = String(r.ClassName || "").trim();
+              return cls !== WELD_CLASS && VALVE_OPERATOR_CLASSES.indexOf(cls) === -1;
             });
 
             var hasWelds = workbook.SheetNames.indexOf("WeldJoints") !== -1;
@@ -1736,8 +1691,8 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
                 .filter(function (r) { return String(r.WeldElementId || "").trim() !== ""; })
               : [];
 
-            var byLine = groupByLineNumber(materialRows);
-            var weldsByLine = groupWeldsByLineNumber(jointRows);
+            var byLine = groupByLineNumber(materialRows, "LINENUMBER");
+            var weldsByLine = groupByLineNumber(jointRows, "Weld.LINENUMBER");
 
             // The spec a weld is reported under is the dominant SPECIFICATION of the material on its
             // line - welds rarely carry a specification of their own, and never in the WeldJoints sheet.
@@ -1765,7 +1720,7 @@ break;case "namedrange": if (o[1] === "/") break; if (!G.Names) G.Names = []; va
               return {
                 line: ln,
                 meta: lineRows.length + " item rows",
-                items: aggregateLineItems(lineRows),
+                items: aggregateSummary(lineRows),
                 welds: aggregateWeldJoints(lineWelds, specOfLine)
               };
             });

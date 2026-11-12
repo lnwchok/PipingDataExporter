@@ -55,6 +55,7 @@ namespace PipingDataExporter.Export
 
         private int _welds;
         private int _weldsWithErrors;
+        private int _errors;
         private string _firstError;
 
         public WeldJointReader(string weldClassName)
@@ -102,6 +103,7 @@ namespace PipingDataExporter.Export
                 }
 
                 _welds++;
+                int errorsBefore = _errors;
 
                 try
                 {
@@ -112,6 +114,12 @@ namespace PipingDataExporter.Export
                 catch (Exception ex)
                 {
                     Fail(ex);
+                }
+
+                // Counted once per weld, however many reads failed under it.
+                if (_errors != errorsBefore)
+                {
+                    _weldsWithErrors++;
                 }
             }
         }
@@ -333,7 +341,7 @@ namespace PipingDataExporter.Export
 
         private void Fail(Exception ex)
         {
-            _weldsWithErrors++;
+            _errors++;
             _firstError = _firstError ?? ex.GetType().Name + ": " + ex.Message;
         }
     }

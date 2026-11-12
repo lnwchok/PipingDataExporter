@@ -6,7 +6,7 @@ Loaded when working under `tools/`. Project constraints live in the root [CLAUDE
 
 A single standalone HTML file with SheetJS vendored inline — no build step and no server, so edit the file directly and reload the browser. It starts empty and parses whatever `.xlsx` you hand it; no project data is baked in. IBM Plex is pulled from Google Fonts, so it falls back to Segoe UI offline — layout is unaffected.
 
-Two tabs share one aggregation pipeline (`sizeInfo` → `aggregateSummary` / `aggregateLineItems` → `renderSummaryRows` / `renderRows`): **Overall Summary** (whole model) and **By Line Number** (grouped by `LINENUMBER`). Both sort by material code first, blanks last.
+Two tabs share one aggregation pipeline (`sizeInfo` → `aggregateSummary` → `renderSummaryRows` / `renderRows`; By Line calls `aggregateSummary` once per line group): **Overall Summary** (whole model) and **By Line Number** (grouped by `LINENUMBER`). Both sort by material code first, blanks last.
 
 **There are two exports, and they answer to filters differently on purpose.**
 
@@ -53,6 +53,8 @@ would collapse every open group mid-interaction) and "Clear filters" deliberatel
 ticks — a selection is a choice the user made, not a view setting. "Select all" is scoped to the
 visible lines; a ticked line the filter has since hidden still exports, and the counter says how many
 those are rather than letting them vanish.
+
+**`VALVE_WRENCH` and `HAND_WHEEL` are excluded from the material BOQ too.** They are valve operators, modelled as separate elements sitting on a valve that is already counted, so keeping them inflated valve quantities. `handleFile` filters them out alongside `WELD` (via `VALVE_OPERATOR_CLASSES`) before aggregating, so they appear in neither the Summary nor By Line Number.
 
 **Welds are deliberately excluded from the material BOQ.** `WELD` is not in `CLASS_ORDER`, and `handleFile` filters `ClassName === "WELD"` out of the `PipingItems` rows before aggregating. Weld quantity comes from the `WeldJoints` sheet instead — that is the only place the joint *type* exists (`SOCKET_WELD_JOINT` vs `BUTT_WELD_JOINT`, which price differently), and the two sheets are 1:1, so counting both would double them. If you ever put `WELD` back into `CLASS_ORDER`, drop the `WeldJoints` read at the same time.
 
