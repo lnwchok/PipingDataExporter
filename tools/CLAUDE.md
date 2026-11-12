@@ -2,6 +2,14 @@
 
 Loaded when working under `tools/`. Project constraints live in the root [CLAUDE.md](../CLAUDE.md).
 
+## Team share (`tools/Publish-ToShare.ps1`)
+
+Copies exactly two files — `bin\x64\Release\net48\PipingDataExporter.dll` and `boq_report.html` — to
+`\\192.165.0.5\Piping_Group\XX_Backup\Sitthichok\Devs\OpenPlant_BQ_Extractor` (override with
+`-Destination`), overwriting what is there. It copies whatever DLL is on disk; pass `-Build` after any
+C# change, or the share gets a stale binary. Don't add `ClosedXML`/OpenXml DLLs or the `.pdb` — the
+host ships its own ClosedXML (see root CLAUDE.md) and teammates don't debug.
+
 ## BOQ report (`tools/boq_report.html`)
 
 A single standalone HTML file with SheetJS vendored inline — no build step and no server, so edit the file directly and reload the browser. It starts empty and parses whatever `.xlsx` you hand it; no project data is baked in. IBM Plex is pulled from Google Fonts, so it falls back to Segoe UI offline — layout is unaffected.
